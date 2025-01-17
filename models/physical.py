@@ -58,7 +58,7 @@ class PoissonEquation(nn.Module):
                     A[idx, idx - 1] = -1.0
                 if j < self.N - 1:
                     A[idx, idx + 1] = -1.0
-        return A
+        return A / (self.dx * self.dx)
         
    
         
@@ -66,7 +66,7 @@ class PoissonEquation(nn.Module):
         # penalize negative values in the first num_gaussians parameters
         return torch.sum(torch.relu(-self.alpha[:self.num_gaussians]))
 
-    def forward(self, func):
+    def forward(self):
         """
         Solve the Poisson equation using SOR.
         """
@@ -80,6 +80,4 @@ class PoissonEquation(nn.Module):
 
         return u
 
-def rhs(x, y):
-    return 0.1*torch.sin(x)*torch.cos(y)
 

@@ -83,7 +83,7 @@ class Trainer:
     
     def _train_epoch_nointeraction(self, data, rhs):
         # Compute phys solution using the current value of alpha
-        phys_solution = self.model_phys(rhs).reshape(self.N, self.N).to(self.device)
+        phys_solution = self.model_phys().reshape(self.N, self.N).to(self.device)
         data = data.to(self.device)
         interpolated_phys = interpolate_phys_solution(data, phys_solution)
         
@@ -103,10 +103,10 @@ class Trainer:
     def _train_epoch(self, data, rhs):
 
         # Compute phys solution using the current value of alpha
-        phys_solution = self.model_phys(rhs).reshape(self.N, self.N).to(self.device)
+        phys_solution = self.model_phys().reshape(self.N, self.N).to(self.device)
         data = data.to(self.device)
         # Choose collocation points in [-3,3]x[-3,3]
-        collocation_points = 6 * torch.rand((10, 2)).to(self.device) - 3
+        collocation_points = 6 * torch.rand((50, 2)).to(self.device) - 3
 
 
         # Compute the synthetic solution on data points and collocation points

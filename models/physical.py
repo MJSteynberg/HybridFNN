@@ -3,7 +3,7 @@ import torch.nn as nn
 
 def gaussian(param, num_gaussians=1, N=100, L=6):
     # interpolate alpha1 to the grid
-    gaussian_map = 0.1*torch.ones((N, N), dtype=torch.float32, device=param.device)
+    gaussian_map = torch.ones((N, N), dtype=torch.float32, device=param.device)
     
     x = torch.linspace(-L//2, L//2, N, device=param.device)
     y = torch.linspace(-L//2, L//2, N, device=param.device)
@@ -62,7 +62,7 @@ class PoissonEquation(nn.Module):
         Assemble the right-hand side vector f.
         """
         f = self.func(self.x, self.y)
-        return f.flatten()
+        return f.flatten() * self.dx ** 2
 
     def _assemble_D2(self):
         """
@@ -76,24 +76,24 @@ class PoissonEquation(nn.Module):
             for j in range(self.N):
                 idx = i * self.N + j
                 indices.append((idx, idx))
-                values.append(4.0)
+                values.append(-4.0)
                 if i > 0:  # Top
                     indices.append((idx, idx - self.N))
-                    values.append(-1.0)
+                    values.append(1.0)
                 if i < self.N - 1:  # Bottom
                     indices.append((idx, idx + self.N))
-                    values.append(-1.0)
+                    values.append(1.0)
                 if j > 0:  # Left
                     indices.append((idx, idx - 1))
-                    values.append(-1.0)
+                    values.append(1.0)
                 if j < self.N - 1:  # Right
                     indices.append((idx, idx + 1))
-                    values.append(-1.0)
+                    values.append(1.0)
         
         indices = torch.tensor(indices, dtype=torch.long, device=self.device).T
         values = torch.tensor(values, dtype=torch.float32, device=self.device)
         D2 = torch.sparse_coo_tensor(indices, values, (N2, N2))
-        return D2 / (self.dx**2)
+        return D2
 
     def _assemble_D(self):
         """
@@ -109,24 +109,26 @@ class PoissonEquation(nn.Module):
                 idx = i * self.N + j
                 if i > 0:  # Top
                     indices_x.append((idx, idx - self.N))
-                    values_x.append(-1.0)
+                    values_x.append(1.0)
                 if i < self.N - 1:  # Bottom
                     indices_x.append((idx, idx + self.N))
-                    values_x.append(1.0)
+                    values_x.append(-1.0)
                 if j > 0:  # Left
                     indices_y.append((idx, idx - 1))
-                    values_y.append(-1.0)
+                    values_y.append(1.0)
                 if j < self.N - 1:  # Right
                     indices_y.append((idx, idx + 1))
-                    values_y.append(1.0)
+                    values_y.append(-1.0)
+
+
 
         indices_x = torch.tensor(indices_x, dtype=torch.long, device=self.device).T
         values_x = torch.tensor(values_x, dtype=torch.float32, device=self.device)
         indices_y = torch.tensor(indices_y, dtype=torch.long, device=self.device).T
         values_y = torch.tensor(values_y, dtype=torch.float32, device=self.device)
 
-        self.Dx = torch.sparse_coo_tensor(indices_x, values_x, (N2, N2)) / (2 * self.dx)
-        self.Dy = torch.sparse_coo_tensor(indices_y, values_y, (N2, N2)) / (2 * self.dx)
+        self.Dx = torch.sparse_coo_tensor(indices_x, values_x, (N2, N2)) / 2
+        self.Dy = torch.sparse_coo_tensor(indices_y, values_y, (N2, N2)) / 2
         return self.Dx, self.Dy
 
     def _assemble_lhs(self):
@@ -139,15 +141,58 @@ class PoissonEquation(nn.Module):
             self.Dx, self.Dy = self._assemble_D()
 
         # Flatten the diffusion map
-        diffusion_map = self._create_diffusion_map().flatten()
+        diffusion_map = self._create_diffusion_map()
         D2 = self.D2.to_dense()
         Dx = self.Dx.to_dense()
         Dy = self.Dy.to_dense()
-        # Replace diagonal matrices with element-wise multiplication
-        lhs = (
-            diffusion_map[:,None] * D2
-             + (Dx @ diffusion_map)[:,None] * Dx
-             + (Dy @ diffusion_map)[:,None] * Dy
+
+        # plot Dx @ diffusion_map + the actual derivative of alpha
+        if self.verbose:
+            import matplotlib.pyplot as plt
+            plt.imshow((-(Dx @ diffusion_map.flatten())/self.dx).cpu().detach().numpy().reshape(self.N, self.N)[1:-1,1:-1], extent=(-self.L / 2, self.L / 2, -self.L / 2, self.L / 2), origin='lower')
+            plt.colorbar()
+            plt.title("Dx @ diffusion_map")
+            plt.savefig("Dx_diffusion.png")
+            plt.clf()
+            plt.imshow(-(Dy @ diffusion_map.flatten()/self.dx).cpu().detach().numpy().reshape(self.N, self.N)[1:-1,1:-1], extent=(-self.L / 2, self.L / 2, -self.L / 2, self.L / 2), origin='lower')
+            plt.colorbar()
+            plt.title("Dy @ diffusion_map")
+            plt.savefig("Dy_diffusion.png")
+
+            plt.clf()
+            plt.imshow(torch.gradient(diffusion_map, spacing=(self.dx,), dim = 0)[0].cpu().detach().numpy(), extent=(-self.L / 2, self.L / 2, -self.L / 2, self.L / 2), origin='lower')
+            plt.colorbar()
+            plt.title("d/dx diffusion_map")
+            plt.savefig("d_dx_diffusion.png")
+            plt.clf()
+
+            plt.imshow(torch.gradient(diffusion_map, spacing=(self.dx,), dim = 1)[0].cpu().detach().numpy(), extent=(-self.L / 2, self.L / 2, -self.L / 2, self.L / 2), origin='lower')
+            plt.colorbar()
+            plt.title("d/dy diffusion_map")
+            plt.savefig("d_dy_diffusion.png")
+            plt.clf()
+
+
+
+        # Assemble the left-hand side matrix
+        d_diff_x = (Dx @ diffusion_map.flatten()).reshape(self.N, self.N)
+        d_diff_y = (Dy @ diffusion_map.flatten()).reshape(self.N, self.N)
+        # set the boundary to zero
+        d_diff_x[0, :] = 0
+        d_diff_x[-1, :] = 0
+        d_diff_x[:, 0] = 0
+        d_diff_x[:, -1] = 0
+        d_diff_y[0, :] = 0
+        d_diff_y[-1, :] = 0
+        d_diff_y[:, 0] = 0
+        d_diff_y[:, -1] = 0
+
+
+
+        lhs = -(
+            diffusion_map.flatten()[:,None] * D2
+             + d_diff_x.flatten()[:,None] * Dx
+             + d_diff_y.flatten()[:,None] * Dy
         )
         return lhs.to_dense()
 
@@ -173,5 +218,4 @@ class PoissonEquation(nn.Module):
         u = torch.linalg.solve(lhs, rhs)
 
         return u
-
 

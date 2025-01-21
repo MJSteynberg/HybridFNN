@@ -9,9 +9,8 @@ from datetime import datetime
 import pandas as pd
 
 def rhs(x, y):
-    # a sine wave
-    return torch.sin(2 * np.pi * x / 6) * torch.sin(2 * np.pi * y / 6)
-
+    # a complex rhs function
+    return torch.sin(2 * torch.pi * x / 6) * torch.cos(2 * torch.pi * y / 6) + torch.exp(-((x - 0.5)**2 + (y - 0.5)**2))
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 # Generate data
 if input("Generate new data? (y/n): ") == 'y':
@@ -22,16 +21,16 @@ data = torch.from_numpy(np.loadtxt('data/diffusion/data.txt')).float()
 
 # Define the synthetic model
 data_dim = 1
-hidden_dim = 128
-num_layers = 6
+hidden_dim = 500
+num_layers = 4
 learning_rate = 1e-3
-num_epochs = 2000
+num_epochs = 3000
 
 # Define the physical model
 L = 6.0
 N = 50
 num_gaussians = 2
-orig = [1, 1, -2, 1.4, -1.1, -1.3, 1.0, 1.0]
+orig = [1, 1, -2, 1.4, 1, -1.3, 1.0, 1.0]
 alpha = torch.tensor(orig, device=device)
 
 

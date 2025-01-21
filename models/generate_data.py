@@ -14,8 +14,8 @@ def generate_data(rhs, N):
     solution = solver().reshape(N,N)
 
     # Choose sensor positions randomly in [1.5, 2.5]x[1.5, 2.5]
-    num_sensors = 20
-    sensors =  1.5*torch.rand((num_sensors, 2)) + 1.
+    num_sensors = 10
+    sensors =  torch.rand((num_sensors, 2)) + 1.
 
     # Interpolate the solution to the sensor positions
     sensor_values = interpolate_phys_solution(sensors, solution)

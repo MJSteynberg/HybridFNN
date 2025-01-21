@@ -10,12 +10,12 @@ import pandas as pd
 
 def rhs(x, y):
     # a sine wave
-    return 10*torch.sin(2 * np.pi * x / 6) * torch.sin(2 * np.pi * y / 6)
+    return torch.sin(2 * np.pi * x / 6) * torch.sin(2 * np.pi * y / 6)
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 # Generate data
 if input("Generate new data? (y/n): ") == 'y':
-    generate_data(rhs)
+    generate_data(rhs, 150)
 
 # Load data
 data = torch.from_numpy(np.loadtxt('data/diffusion/data.txt')).float()

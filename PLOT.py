@@ -7,8 +7,6 @@ import pandas as pd
 import os 
 from datetime import datetime
 
-params = "alpha"
-
 
 def gaussian(param, num_gaussians=1, N=100, L=6):
     # interpolate alpha1 to the grid
@@ -40,48 +38,75 @@ def load_files(folder):
     param_df = pd.read_csv(os.path.join(folder, recent_param_file))
 
     return param_df
-def plot_gaussians(param):
+def plot_gaussians():
     torch.set_rng_state(torch.manual_seed(42).get_state())
     device = 'cpu'
 
-    results_folder = f'parameters/diffusion/{param}/'
+    results_folder = f'parameters/diffusion/'
     data_folder = 'data/diffusion/'
 
-    params = load_files(results_folder)
+    alpha = load_files(results_folder + 'alpha/')
+    k = load_files(results_folder + 'k/')
     data = np.loadtxt(data_folder + 'data.txt')
     coords = data[:,:2]
     
     
 
 
-    alpha_real = gaussian(params[f"{param}_real"].values, num_gaussians = 1)
-    alpha_hybrid = gaussian(params[f"{param}_hybrid"].values, num_gaussians = 1)
-    alpha_phys = gaussian(params[f"{param}_phys"].values, num_gaussians = 1)
-    fig, axs = plt.subplots(1, 3, figsize=(12, 8), constrained_layout=True)
+    alpha_real = gaussian(alpha[f"alpha_real"].values, num_gaussians = 1)
+    alpha_hybrid = gaussian(alpha[f"alpha_hybrid"].values, num_gaussians = 1)
+    alpha_phys = gaussian(alpha[f"alpha_phys"].values, num_gaussians = 1)
+
+    k_real = gaussian(k[f"k_real"].values, num_gaussians = 1)
+    k_hybrid = gaussian(k[f"k_hybrid"].values, num_gaussians = 1)
+    k_phys = gaussian(k[f"k_phys"].values, num_gaussians = 1)
+
+    fig, axs = plt.subplots(2, 3, figsize=(12, 8), constrained_layout=True)
     colormap = 'viridis'
 
-    L = 3
-    global_max = np.max(alpha_real)
+    L = 6
+    global_max_a = np.max(alpha_real)
+    global_max_k = np.max(k_real)
+
 
     # Setup all heatmaps
-    im1 = axs[0].imshow(alpha_phys,
-                        extent=(-L, L, -L, L),
+    im1 = axs[0][0].imshow(alpha_phys,
+                        extent=(-L/2, L/2, -L/2, L/2),
                         origin='lower',
                         cmap=colormap,
                         vmin=0,
-                        vmax=global_max )
-    im2 = axs[1].imshow(alpha_hybrid,
-                        extent=(-L, L, -L, L),
+                        vmax=global_max_a )
+    im2 = axs[0][1].imshow(alpha_hybrid,
+                        extent=(-L/2, L/2, -L/2, L/2),
                         origin='lower',
                         cmap=colormap,
                         vmin=0,
-                        vmax=global_max )
-    im3 = axs[2].imshow(alpha_real,
-                        extent=(-L, L, -L, L),
+                        vmax=global_max_a )
+    im3 = axs[0][2].imshow(alpha_real,
+                        extent=(-L/2, L/2, -L/2, L/2),
                         origin='lower',
                         cmap=colormap,
                         vmin=0,
-                        vmax=global_max )
+                        vmax=global_max_a )
+    
+    im4 = axs[1][0].imshow(k_phys,
+                        extent=(-L/2, L/2, -L/2, L/2),
+                        origin='lower',
+                        cmap=colormap,
+                        vmin=0,
+                        vmax=global_max_k )
+    im5 = axs[1][1].imshow(k_hybrid,
+                        extent=(-L/2, L/2, -L/2, L/2),
+                        origin='lower',
+                        cmap=colormap,
+                        vmin=0,
+                        vmax=global_max_k )
+    im6 = axs[1][2].imshow(k_real,
+                        extent=(-L/2, L/2, -L/2, L/2),
+                        origin='lower',
+                        cmap=colormap,
+                        vmin=0,
+                        vmax=global_max_k )
 
     
 
@@ -89,88 +114,132 @@ def plot_gaussians(param):
     alpha1_mean_error_physics = abs(alpha_phys - alpha_real).mean()
     alpha1_mean_error_hybrid = abs(alpha_hybrid - alpha_real).mean()
 
+    k_mean_error_physics = abs(k_phys - k_real).mean()
+    k_mean_error_hybrid = abs(k_hybrid - k_real).mean()
+
+
 
     # Set titles including errors
     plt.rcParams['axes.titlesize'] = 14
-    axs[0].set_title(r"$\alpha(x)   $ Physics: " + "\n" +
+    axs[0][0].set_title(r"$\kappa(x)   $ Physics: " + "\n" +
                         r"Mean Error:  $%.3e$" % alpha1_mean_error_physics)
-    axs[1].set_title(r"$\alpha(x)   $ Hybrid:" + "\n" +
+    axs[0][1].set_title(r"$\kappa(x)   $ Hybrid:" + "\n" +
                         r"Mean Error:  $%.3e$" % alpha1_mean_error_hybrid)
-    axs[2].set_title(r"$\alpha(x)  $ Real")
+    axs[0][2].set_title(r"$\kappa(x)  $ Real")
+
+    axs[1][0].set_title(r"$\eta(x)   $ Physics: " + "\n" +
+                        r"Mean Error:  $%.3e$" % k_mean_error_physics)
+    axs[1][1].set_title(r"$\eta(x)   $ Hybrid:" + "\n" +
+                        r"Mean Error:  $%.3e$" % k_mean_error_hybrid)
+    axs[1][2].set_title(r"$\eta(x)  $ Real")
 
 
     # Set axis limits
     for ax in axs:
-        ax.set_xlim(-3, 3)
-        ax.set_ylim(-3, 3)
+        for a in ax:
+            a.set_xlim(-3, 3)
+            a.set_ylim(-3, 3)
 
-    axs[0].scatter(coords[:, 0], coords[:, 1], c='k', s=10)
-    axs[1].scatter(coords[:, 0], coords[:, 1], c='k', s=10)
+    axs[0][0].scatter(coords[:, 0], coords[:, 1], c='k', s=10)
+    axs[0][1].scatter(coords[:, 0], coords[:, 1], c='k', s=10)
+    axs[1][0].scatter(coords[:, 0], coords[:, 1], c='k', s=10)
+    axs[1][1].scatter(coords[:, 0], coords[:, 1], c='k', s=10)
 
     fig.colorbar(im3, ax=axs, orientation='vertical', shrink=0.8, label="Legend")
-    plt.savefig(f'{results_folder}_{param}_diffusion.png', dpi=500)
+    plt.savefig(f'{results_folder}helmholtz.png', dpi=500)
 
-def plot_error(param):
+def plot_error():
 
     torch.set_rng_state(torch.manual_seed(42).get_state())
     device = 'cpu'
 
-    results_folder = f'parameters/diffusion/{param}/'
+    results_folder = f'parameters/diffusion/'
     data_folder = 'data/diffusion/'
 
-    params = load_files(results_folder)
+    alpha = load_files(results_folder + 'alpha/')
+    k = load_files(results_folder + 'k/')
     data = np.loadtxt(data_folder + 'data.txt')
     coords = data[:,:2]
+
+
     
 
 
-    alpha_real = gaussian(params[f"{param}_real"].values, num_gaussians = 1)
-    alpha_hybrid = gaussian(params[f"{param}_hybrid"].values, num_gaussians = 1)
-    alpha_phys = gaussian(params[f"{param}_phys"].values, num_gaussians = 1)
+    alpha_real = gaussian(alpha[f"alpha_real"].values, num_gaussians = 1)
+    alpha_hybrid = gaussian(alpha[f"alpha_hybrid"].values, num_gaussians = 1)
+    alpha_phys = gaussian(alpha[f"alpha_phys"].values, num_gaussians = 1)
+
+    k_real = gaussian(k[f"k_real"].values, num_gaussians = 1)
+    k_hybrid = gaussian(k[f"k_hybrid"].values, num_gaussians = 1)
+    k_phys = gaussian(k[f"k_phys"].values, num_gaussians = 1)
 
     
-    fig, axs = plt.subplots(1, 2, figsize=(12, 8), constrained_layout=True)
+    fig, axs = plt.subplots(2, 2, figsize=(12, 8), constrained_layout=True)
     colormap = 'viridis'
-    L = 3
-    global_max = max(np.max(alpha_phys-alpha_real), np.max(alpha_hybrid-alpha_real))
+    L = 6
+    global_max_a = max(np.max(alpha_phys-alpha_real), np.max(alpha_hybrid-alpha_real))
+    global_max_k = max(np.max(k_phys-k_real), np.max(k_hybrid-k_real))
     # Setup heatmaps
-    im1 = axs[0].imshow(np.abs(alpha_phys - alpha_real),
-                        extent=(-L, L, -L, L),
+    im1 = axs[0][0].imshow(np.abs(alpha_phys - alpha_real),
+                        extent=(-L/2, L/2, -L/2, L/2),
                         origin='lower',
                         cmap=colormap,
                         vmin=0,
-                        vmax=global_max)
-    im2 = axs[1].imshow(np.abs(alpha_hybrid - alpha_real),
-                        extent=(-L, L, -L, L),
+                        vmax=global_max_a)
+    im2 = axs[0][1].imshow(np.abs(alpha_hybrid - alpha_real),
+                        extent=(-L/2, L/2, -L/2, L/2),
                         origin='lower',
                         cmap=colormap,
                         vmin=0,
-                        vmax=global_max)
+                        vmax=global_max_a)
+    
+    im3 = axs[1][0].imshow(np.abs(k_phys - k_real),
+                        extent=(-L/2, L/2, -L/2, L/2),
+                        origin='lower',
+                        cmap=colormap,
+                        vmin=0,
+                        vmax=global_max_k)
+    im4 = axs[1][1].imshow(np.abs(k_hybrid - k_real),
+                        extent=(-L/2, L/2, -L/2, L/2),
+                        origin='lower',
+                        cmap=colormap,
+                        vmin=0,
+                        vmax=global_max_k)
+    
 
 
     # Calculate L1 errors
     alpha_mean_error_physics = abs(alpha_phys - alpha_real).mean()
     alpha_mean_error_hybrid = abs(alpha_hybrid - alpha_real).mean()
 
+    k_mean_error_physics = abs(k_phys - k_real).mean()
+    k_mean_error_hybrid = abs(k_hybrid - k_real).mean()
+
 
     # Set titles including errors
     plt.rcParams['axes.titlesize'] = 14
-    axs[0].set_title(r"$\alpha(x)   $Error Physics: " + "\n" +
+    axs[0][0].set_title(r"$\kappa(x)   $ Error Physics: " + "\n" +
                         r"Mean Error:  $%.3e$" % alpha_mean_error_physics)
-    axs[1].set_title(r"$\alpha(x)   $Error Hybrid:" + "\n" +
+    axs[0][1].set_title(r"$\kappa(x)   $ Error Hybrid:" + "\n" +
                         r"Mean Error:  $%.3e$" % alpha_mean_error_hybrid)
+    axs[1][0].set_title(r"$\eta(x)   $ Error Physics: " + "\n" +
+                        r"Mean Error:  $%.3e$" % k_mean_error_physics)
+    axs[1][1].set_title(r"$\eta(x)   $ Error Hybrid:" + "\n" +
+                        r"Mean Error:  $%.3e$" % k_mean_error_hybrid)
+    
 
 
     # Set axis limits
     for ax in axs:
-        ax.set_xlim(-3, 3)
-        ax.set_ylim(-3, 3)
+        for a in ax:
+            a.set_xlim(-3, 3)
+            a.set_ylim(-3, 3)
 
     # Plot training data
     plt.scatter(coords[:, 0], coords[:, 1], c='k', s=10)
 
     fig.colorbar(im2, ax=axs, orientation='vertical', shrink=0.8, label="Legend")
-    plt.savefig(f'{results_folder}_{param}_diffusion_error.png', dpi=500)
+    plt.savefig(f'{results_folder}helmholtz_error.png', dpi=500)
 
 
 
@@ -204,7 +273,7 @@ def compare_predictions():
 
     # X-axis labels for 6 parameters
     parameter_names = [
-        r'$\alpha1_1$', r'$\alpha1_2$', r'$c_{1,x}$', r'$c_{1,y}$', r'$c_{2,x}$', r'$c_{2,y}$'
+        r'$\kappa1_1$', r'$\kappa1_2$', r'$c_{1,x}$', r'$c_{1,y}$', r'$c_{2,x}$', r'$c_{2,y}$'
     ]
 
     # Create the figure and axis
@@ -234,7 +303,7 @@ def compare_predictions():
 
         # Plot alpha1 values (Red for Real, Green for Hybrid, Blue for Physics)
         ax.scatter(x_positions[:2], alpha1_values[i, :], c='r' if i == 0 else 'b' if i == 1 else 'g',
-                   label=r'$\alpha1_{1,2}$ (' + ["Real", "Hybrid", "Physics"][i] + ')', s=size, edgecolors='k', marker=marker)
+                   label=r'$\kappa1_{1,2}$ (' + ["Real", "Hybrid", "Physics"][i] + ')', s=size, edgecolors='k', marker=marker)
 
         # Plot center values (Green for Real, Blue for Hybrid, Red for Physics)
         ax.scatter(x_positions[2:], centers_values[i, :], c='r' if i == 0 else 'b' if i == 1 else 'g',
@@ -248,7 +317,7 @@ def compare_predictions():
     ax.set_ylabel('Predicted Values', fontsize=14)
 
     # Add title
-    ax.set_title(r'Comparison of Predicted $\alpha1$ and Centers (Real vs Hybrid vs Physics)', fontsize=14)
+    ax.set_title(r'Comparison of Predicted $\kappa1$ and Centers (Real vs Hybrid vs Physics)', fontsize=14)
 
     # Add a legend
     ax.legend()
@@ -256,11 +325,9 @@ def compare_predictions():
     # Save the plot in the usual folder
     plt.savefig(f'parameters/diffusion/compare_predictions.png', dpi=500)
 
-params = "alpha"
 
-
-plot_gaussians(params)
-plot_error(params)
+plot_gaussians()
+plot_error()
 compare_predictions()
 
 

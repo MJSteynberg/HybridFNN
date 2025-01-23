@@ -121,7 +121,10 @@ class Trainer:
         loss_synth = self.loss_func(synth_data, data[:, 2].reshape(-1,1))
         loss_hybrid = self.loss_func(phys_col, synth_col)
 
-        loss = 100 * loss_FD + 100 * loss_synth + loss_hybrid + 1e6 * self.model_phys.penalization()
+        if loss_FD < 1e-1 and loss_synth < 1e-1:
+            loss = 100 * loss_FD + 100 * loss_synth + 10 * loss_hybrid + 1e6 * self.model_phys.penalization()
+        else:
+            loss = 100 * loss_FD + 100 * loss_synth + 1e6 * self.model_phys.penalization()
         
         # Optimizer steps
         self.optimizer_phys.zero_grad()

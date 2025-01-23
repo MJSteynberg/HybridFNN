@@ -7,6 +7,9 @@ import pandas as pd
 import os 
 from datetime import datetime
 
+params = "alpha"
+
+
 def gaussian(param, num_gaussians=1, N=100, L=6):
     # interpolate alpha1 to the grid
     gaussian_map = 0.1*np.ones((N, N), dtype=np.float32)
@@ -29,29 +32,31 @@ def load_files(folder):
     # Sort files based on the timestamp in the filename
     param_files.sort(key=lambda x: datetime.strptime(x[6:25], '%Y-%m-%d_%H-%M-%S'), reverse=True)
 
+    print(f"Found {len(param_files)} parameter files.")
+
     # Load the most recent param and index files
     recent_param_file = param_files[0]
 
     param_df = pd.read_csv(os.path.join(folder, recent_param_file))
 
     return param_df
-
-def plot_gaussians():
+def plot_gaussians(param):
     torch.set_rng_state(torch.manual_seed(42).get_state())
     device = 'cpu'
 
-    results_folder = 'parameters/diffusion/'
+    results_folder = f'parameters/diffusion/{param}/'
     data_folder = 'data/diffusion/'
 
     params = load_files(results_folder)
     data = np.loadtxt(data_folder + 'data.txt')
     coords = data[:,:2]
     
+    
 
 
-    alpha_real = gaussian(params["params_real"].values, num_gaussians = 2)
-    alpha_hybrid = gaussian(params["params_hybrid"].values, num_gaussians = 2)
-    alpha_phys = gaussian(params["params_phys"].values, num_gaussians = 2)
+    alpha_real = gaussian(params[f"{param}_real"].values, num_gaussians = 1)
+    alpha_hybrid = gaussian(params[f"{param}_hybrid"].values, num_gaussians = 1)
+    alpha_phys = gaussian(params[f"{param}_phys"].values, num_gaussians = 1)
     fig, axs = plt.subplots(1, 3, figsize=(12, 8), constrained_layout=True)
     colormap = 'viridis'
 
@@ -64,19 +69,19 @@ def plot_gaussians():
                         origin='lower',
                         cmap=colormap,
                         vmin=0,
-                        vmax=global_max - 0.5)
+                        vmax=global_max )
     im2 = axs[1].imshow(alpha_hybrid,
                         extent=(-L, L, -L, L),
                         origin='lower',
                         cmap=colormap,
                         vmin=0,
-                        vmax=global_max - 0.5)
+                        vmax=global_max )
     im3 = axs[2].imshow(alpha_real,
                         extent=(-L, L, -L, L),
                         origin='lower',
                         cmap=colormap,
                         vmin=0,
-                        vmax=global_max - 0.5)
+                        vmax=global_max )
 
     
 
@@ -103,14 +108,14 @@ def plot_gaussians():
     axs[1].scatter(coords[:, 0], coords[:, 1], c='k', s=10)
 
     fig.colorbar(im3, ax=axs, orientation='vertical', shrink=0.8, label="Legend")
-    plt.savefig(f'{results_folder}diffusion.png', dpi=500)
+    plt.savefig(f'{results_folder}_{param}_diffusion.png', dpi=500)
 
-def plot_error():
+def plot_error(param):
 
     torch.set_rng_state(torch.manual_seed(42).get_state())
     device = 'cpu'
 
-    results_folder = 'parameters/diffusion/'
+    results_folder = f'parameters/diffusion/{param}/'
     data_folder = 'data/diffusion/'
 
     params = load_files(results_folder)
@@ -119,9 +124,9 @@ def plot_error():
     
 
 
-    alpha_real = gaussian(params["params_real"].values, num_gaussians = 2)
-    alpha_hybrid = gaussian(params["params_hybrid"].values, num_gaussians = 2)
-    alpha_phys = gaussian(params["params_phys"].values, num_gaussians = 2)
+    alpha_real = gaussian(params[f"{param}_real"].values, num_gaussians = 1)
+    alpha_hybrid = gaussian(params[f"{param}_hybrid"].values, num_gaussians = 1)
+    alpha_phys = gaussian(params[f"{param}_phys"].values, num_gaussians = 1)
 
     
     fig, axs = plt.subplots(1, 2, figsize=(12, 8), constrained_layout=True)
@@ -165,13 +170,13 @@ def plot_error():
     plt.scatter(coords[:, 0], coords[:, 1], c='k', s=10)
 
     fig.colorbar(im2, ax=axs, orientation='vertical', shrink=0.8, label="Legend")
-    plt.savefig(f'{results_folder}diffusion_error.png', dpi=500)
+    plt.savefig(f'{results_folder}_{param}_diffusion_error.png', dpi=500)
 
 
 
 
 
-def compare_predictions():
+def compare_predictions(param):
     """
     Compares the predictions of alpha1 (physics, hybrid, real) and centers (physics, hybrid, real) on the same plot.
     """
@@ -179,17 +184,17 @@ def compare_predictions():
     
     
 
-    results_folder = 'parameters/diffusion/'
+    results_folder = f'parameters/diffusion/{param}/'
 
     params = load_files(results_folder)
-    alpha1_real = np.array([params['params_real'][0], params['params_real'][1]])
-    alpha1_hybrid = np.array([params['params_hybrid'][0], params['params_hybrid'][1]])
-    alpha1_phys = np.array([params['params_phys'][0], params['params_phys'][1]])
+    alpha1_real = np.array([params[f'{param}_real'][0], params[f'{param}_real'][1]])
+    alpha1_hybrid = np.array([params[f'{param}_hybrid'][0], params[f'{param}_hybrid'][1]])
+    alpha1_phys = np.array([params[f'{param}_phys'][0], params[f'{param}_phys'][1]])
     alpha1_values = np.array([alpha1_real, alpha1_hybrid, alpha1_phys])
 
-    centers_real = np.array(np.concatenate((params['params_real'][[4,6]], params['params_real'][[5,7]])))
-    centers_hybrid = np.array(np.concatenate((params['params_hybrid'][[4,6]], params['params_hybrid'][[5,7]])))
-    centers_phys = np.array(np.concatenate((params['params_phys'][[4,6]], params['params_phys'][[5,7]])))
+    centers_real = np.array(np.concatenate((params[f'{param}_real'][[4,6]], params[f'{param}_real'][[5,7]])))
+    centers_hybrid = np.array(np.concatenate((params[f'{param}_hybrid'][[4,6]], params[f'{param}_hybrid'][[5,7]])))
+    centers_phys = np.array(np.concatenate((params[f'{param}_phys'][[4,6]], params[f'{param}_phys'][[5,7]])))
     centers_values = np.array([centers_real.ravel(), centers_hybrid.ravel(), centers_phys.ravel()])
     
     
@@ -246,11 +251,12 @@ def compare_predictions():
     ax.legend()
 
     # Save the plot in the usual folder
-    plt.savefig(f'{results_folder}compare_predictions.png', dpi=500)
-    
+    plt.savefig(f'{results_folder}_{param}_compare_predictions.png', dpi=500)
+
+params = "alpha"
 
 
-plot_gaussians()
-plot_error()
-compare_predictions()
+plot_gaussians(params)
+plot_error(params)
+
 

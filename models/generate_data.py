@@ -1,4 +1,4 @@
-from models.physical import PoissonEquation
+from models.physical import HelmholtzEquation
 import torch
 from models.training import interpolate_phys_solution
 import numpy as np
@@ -8,14 +8,15 @@ def generate_data(rhs, N):
     fname = 'data/diffusion/'
     device = torch.device('cpu')
     L = 6.0
-    num_gaussians = 2
-    alpha = torch.tensor([3, 2, -2, 1, -2, 1, 1.0, 1.0], device=device)
-    solver = PoissonEquation(device, L, N, num_gaussians, alpha=alpha, func=rhs, verbose=True)
+    num_gaussians = 1
+    alpha = torch.tensor([4, 1, 1, 1.0], device=device).float()
+    k = torch.tensor([3, -1, -1, 1], device=device).float()
+    solver = HelmholtzEquation(device, L, N, num_gaussians, alpha=alpha, k=k, func=rhs, verbose=True)
     solution = solver().reshape(N,N)
 
     # Choose sensor positions randomly in [1.5, 2.5]x[1.5, 2.5]
-    num_sensors = 10
-    sensors =  torch.rand((num_sensors, 2)) + 1.
+    num_sensors = 20
+    sensors =  2*torch.rand((num_sensors, 2)) + 0.5
 
     # Interpolate the solution to the sensor positions
     sensor_values = interpolate_phys_solution(sensors, solution)

@@ -8,7 +8,7 @@ import sympy as sp
 # Add the models directory to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'models')))
 
-from physical import PoissonEquation
+from physical import HelmholtzEquation
 
 def test_poisson_equation():
     device = torch.device("cpu")
@@ -29,29 +29,32 @@ def test_poisson_equation():
         x, y = sp.symbols('x y')
         u = sp.sin(sp.pi * x) * sp.sin(sp.pi * y)
         a = 1 + sp.exp(-((x)**2 + (y)**2))
+        k = 1 + sp.exp(-((x-.5)**2 + (y-.5)**2))
         u_x = sp.diff(u, x)
         u_y = sp.diff(u, y)
         au_xx = sp.diff(a * u_x, x)
         au_yy = sp.diff(a * u_y, y)
-        rhs = au_xx + au_yy
-        print(rhs)
+        rhs = au_xx + au_yy + k*u
+        print(-rhs)
+
+    rhs_function_calculation_gaussian()
 
 
     def rhs_function_gauss(x, y):
-        return -(-2*torch.pi*x*torch.exp(-x**2 - y**2)*torch.sin(torch.pi*y)*torch.cos(torch.pi*x) - 2*torch.pi*y*torch.exp(-x**2 - y**2)*torch.sin(torch.pi*x)*torch.cos(torch.pi*y) - 2*torch.pi**2*(torch.exp(-x**2 - y**2) + 1)*torch.sin(torch.pi*x)*torch.sin(torch.pi*y))
-
-
+        return 2*torch.pi*x*torch.exp(-x**2 - y**2)*torch.sin(torch.pi*y)*torch.cos(torch.pi*x) + 2*torch.pi*y*torch.exp(-x**2 - y**2)*torch.sin(torch.pi*x)*torch.cos(torch.pi*y) + 2*torch.pi**2*(torch.exp(-x**2 - y**2) + 1)*torch.sin(torch.pi*x)*torch.sin(torch.pi*y) - (torch.exp(-(x - 0.5)**2 - (y - 0.5)**2) + 1)*torch.sin(torch.pi*x)*torch.sin(torch.pi*y)    
     alpha = torch.tensor([1,0,0,1]).float()
+    k = torch.tensor([1,.5,.5,1]).float()
 
     # Initialize the PoissonEquation class
-    poisson_solver = PoissonEquation(
+    poisson_solver = HelmholtzEquation(
         device=device,
         L=L,
         N=N,
         num_gaussians=num_gaussians,
         func=rhs_function_gauss,
         verbose=True,
-        alpha=alpha
+        alpha=alpha,
+        k=k
     ).to(device)
 
     # Solve the Poisson equation

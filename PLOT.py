@@ -176,25 +176,28 @@ def plot_error(param):
 
 
 
-def compare_predictions(param):
+def compare_predictions():
     """
     Compares the predictions of alpha1 (physics, hybrid, real) and centers (physics, hybrid, real) on the same plot.
     """
     # Reshape alpha1 and center values into 3x2 and 3x4 matrices
     
     
+    results_folder_alpha = f'parameters/diffusion/alpha/'
+    results_folder_k = f'parameters/diffusion/k/'
 
-    results_folder = f'parameters/diffusion/{param}/'
+    alpha = load_files(results_folder_alpha)
+    k = load_files(results_folder_k)
 
-    params = load_files(results_folder)
-    alpha1_real = np.array([params[f'{param}_real'][0], params[f'{param}_real'][1]])
-    alpha1_hybrid = np.array([params[f'{param}_hybrid'][0], params[f'{param}_hybrid'][1]])
-    alpha1_phys = np.array([params[f'{param}_phys'][0], params[f'{param}_phys'][1]])
+    alpha1_real = np.array([alpha[f'alpha_real'][0], k[f'k_real'][0]])
+    alpha1_hybrid = np.array([alpha[f'alpha_hybrid'][0], k[f'k_hybrid'][0]])
+    alpha1_phys = np.array([alpha[f'alpha_phys'][0], k[f'k_phys'][0]])
+    
     alpha1_values = np.array([alpha1_real, alpha1_hybrid, alpha1_phys])
 
-    centers_real = np.array(np.concatenate((params[f'{param}_real'][[4,6]], params[f'{param}_real'][[5,7]])))
-    centers_hybrid = np.array(np.concatenate((params[f'{param}_hybrid'][[4,6]], params[f'{param}_hybrid'][[5,7]])))
-    centers_phys = np.array(np.concatenate((params[f'{param}_phys'][[4,6]], params[f'{param}_phys'][[5,7]])))
+    centers_real = np.array(np.concatenate((alpha[f'alpha_real'][1:3], k[f'k_real'][1:3])))
+    centers_hybrid = np.array(np.concatenate((alpha[f'alpha_hybrid'][1:3], k[f'k_hybrid'][1:3])))
+    centers_phys = np.array(np.concatenate((alpha[f'alpha_phys'][1:3], k[f'k_phys'][1:3])))
     centers_values = np.array([centers_real.ravel(), centers_hybrid.ravel(), centers_phys.ravel()])
     
     
@@ -251,12 +254,13 @@ def compare_predictions(param):
     ax.legend()
 
     # Save the plot in the usual folder
-    plt.savefig(f'{results_folder}_{param}_compare_predictions.png', dpi=500)
+    plt.savefig(f'parameters/diffusion/compare_predictions.png', dpi=500)
 
 params = "alpha"
 
 
 plot_gaussians(params)
 plot_error(params)
+compare_predictions()
 
 

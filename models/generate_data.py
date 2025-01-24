@@ -1,6 +1,13 @@
-from models.physical import HelmholtzEquation
+import os
+import sys
+import sympy as sp
+import numpy as np
+# Add the models directory to the Python path
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'models')))
+from physical import HelmholtzEquation
 import torch
-from models.training import interpolate_phys_solution
+
+from training import interpolate_phys_solution
 import numpy as np
 
 
@@ -15,8 +22,8 @@ def generate_data(rhs, N):
     solution = solver().reshape(N,N)
 
     # Choose sensor positions randomly in [1.5, 2.5]x[1.5, 2.5]
-    num_sensors = 20
-    sensors =  2*torch.rand((num_sensors, 2)) + 0.5
+    num_sensors = 100
+    sensors =  6*torch.rand((num_sensors, 2)) - 3
 
     # Interpolate the solution to the sensor positions
     sensor_values = interpolate_phys_solution(sensors, solution)

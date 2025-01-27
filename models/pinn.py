@@ -12,7 +12,6 @@ class PINN(NeuralNetwork2D):
     def __init__(self, data_dim, hidden_dim, num_layers, alpha, kappa, activation=nn.Tanh, device='cpu'):
         super().__init__(data_dim, hidden_dim, num_layers, activation, device)
         self.alpha = nn.Parameter(alpha)
-
         self.kappa = nn.Parameter(kappa)
 
     def gaussian_kernel(self, x, y, param, num_gaussians):
@@ -29,7 +28,7 @@ class PINN(NeuralNetwork2D):
         # Compute the solution
         solution = self(data[:, :2])
         # Compute the loss
-        loss = loss_func(solution[:,-1], data[:, 2]) 
+        loss = loss_func(solution, data[:, 2]) 
         return loss
     
     def phys_loss(self, data, _rhs, loss_func):
@@ -55,6 +54,12 @@ class PINN(NeuralNetwork2D):
         x_b = torch.rand((10, 1), requires_grad=True).to(self.device) * 6 - 3
         y_b = torch.rand((10, 1), requires_grad=True).to(self.device) * 6 - 3
         collocation_points_b = torch.cat((torch.cat((x_b, -3 * torch.ones_like(x_b)), dim=1), torch.cat((x_b, 3 * torch.ones_like(x_b)), dim=1), torch.cat((-3 * torch.ones_like(y_b), y_b), dim=1), torch.cat((3 * torch.ones_like(y_b), y_b), dim=1)))
+        # plot points to show where they are:
+        plt.clf()
+        plt.scatter(collocation_points_b[:,0].detach().numpy(), collocation_points_b[:,1].detach().numpy())
+        plt.scatter(collocation_points[:,0].detach().numpy(), collocation_points[:,1].detach().numpy())
+        plt.savefig('points.png')
+
         loss = loss_func(lhs, rhs) + loss_func(self(collocation_points_b), torch.zeros_like(collocation_points_b[:,0].reshape(-1,1)))
         return loss
     
@@ -90,7 +95,7 @@ class PINN_Trainer:
 
 def rhs(x, y):
     # a gaussian source
-    return (4 * torch.exp(-((x - 2) ** 2 + (y - 2 ) ** 2)) + 4 * torch.exp(-((x + 1) ** 2 + (y + 1) ** 2)))
+    return (4 * torch.exp(-((x - 2) ** 2 + (y - 2) ** 2)) + 4 * torch.exp(-((x + 1) ** 2 + (y + 1) ** 2)))
 
 if __name__ == '__main__':
     from generate_data import generate_data 

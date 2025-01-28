@@ -68,6 +68,5 @@ class NeuralNetwork2D(nn.Module):
         Returns:
             torch.Tensor: The output tensor after passing through the network.
         """
-        x = x.to(self.device)
         return self.network(x)
 

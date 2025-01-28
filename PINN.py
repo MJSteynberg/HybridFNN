@@ -1,67 +1,70 @@
-from typing import Any, Dict, List, Optional, Tuple
-
-import hydra
-import numpy as np
-import rootutils
+from models.pinn import PINN, PINN_Trainer
+from models.synthetic import NeuralNetwork2D
 import torch
-from omegaconf import DictConfig
+import numpy as np
+import matplotlib.pyplot as plt
+from models.generate_data import generate_data
 
-import pinnstorch
+def rhs(x, y):
+    # A Gaussian source term
+    return 4 * torch.exp(-((x - 2) ** 2 + (y - 2) ** 2)) + 4 * torch.exp(-((x + 1) ** 2 + (y + 1) ** 2))
 
+if __name__ == '__main__':
+    # Setup device
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-def read_data_fn(root_path):
-    """Read and preprocess data from the specified root path.
+    # Generate synthetic data
+    # generate_data(rhs, 100)
+    data = torch.from_numpy(np.loadtxt('data/diffusion/pinn/data.txt')).float().to(device)
 
-    :param root_path: The root directory containing the data.
-    :return: Processed data will be used in Mesh class.
-    """
+    # Network and training parameters
+    data_dim = 1
+    hidden_dim = 500
+    num_layers = 4
+    alpha_orig = [4, 1, 1, 1.0]
+    k_orig = [3, -1, -1, 1.0]
+    alpha = torch.tensor(alpha_orig, requires_grad=True, device=device)
+    kappa = torch.tensor(k_orig, requires_grad=True, device=device)
 
-    data = pinnstorch.utils.load_data(root_path, "burgers_shock.mat")
-    exact_u = np.real(data["usol"])
+    # Initialize the model
+    network = NeuralNetwork2D(data_dim, hidden_dim, num_layers, device=device, activation=torch.nn.Tanh)
+    model = PINN(network, alpha, kappa, device=device)
+    model.to(device)
 
-    return {"u": exact_u}
+    # Optimizer and scheduler
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+    scheduler = torch.optim.lr_scheduler.CyclicLR(optimizer, base_lr=1e-5, max_lr=1e-3, step_size_up=1000, cycle_momentum=False)
 
+    # Trainer
+    trainer = PINN_Trainer(model, optimizer, scheduler, device, freq = 100)
 
-def pde_fn(outputs: Dict[str, torch.Tensor],
-           x: torch.Tensor,
-           t: torch.Tensor,
-           extra_variables: Dict[str, torch.Tensor]): 
-    """Define the partial differential equations (PDEs)."""
+    # Train the model
+    num_epochs = 2000
+    trainer.train(data, rhs, num_epochs)
 
-    u_x, u_t = pinnstorch.utils.gradient(outputs["u"], [x, t])
-    u_xx = pinnstorch.utils.gradient(u_x, x)[0]
-    outputs["f"] = (
-        u_t + extra_variables["l1"] * outputs["u"] * u_x - torch.exp(extra_variables["l2"]) * u_xx
-    )
+    optimizer = torch.optim.LBFGS(model.parameters(), lr=1e0, max_iter=100)
+    trainer = PINN_Trainer(model, optimizer, scheduler, device, freq = 1)
+    trainer.train(data, rhs, 100)
 
-    return outputs
+    # Evaluate and visualize the solution
+    x = torch.linspace(-3, 3, 100)
+    y = torch.linspace(-3, 3, 100)
+    X, Y = torch.meshgrid(x, y, indexing='ij')
+    xy = torch.stack((X.flatten(), Y.flatten()), dim=1).to(device)
 
+    Z = model(xy).reshape(100, 100).detach().cpu().numpy()
 
-@hydra.main(version_base="1.3", config_path="configs", config_name="config.yaml")
-def main(cfg: DictConfig) -> Optional[float]:
-    """Main entry point for training.
+    # Plot predicted solution
+    plt.imshow(Z, extent=(-3, 3, -3, 3), origin='lower', cmap='viridis')
+    plt.colorbar(label='Solution')
+    plt.title('Predicted Solution')
+    plt.savefig('solution_pinn_predicted.png')
+    plt.show()
 
-    :param cfg: DictConfig configuration composed by Hydra.
-    :return: Optional[float] with optimized metric value.
-    """
-
-    # apply extra utilities
-    # (e.g. ask for tags if none are provided in cfg, print cfg tree, etc.)
-    pinnstorch.utils.extras(cfg)
-
-    # train the model
-    metric_dict, _ = pinnstorch.train(
-        cfg, read_data_fn=read_data_fn, pde_fn=pde_fn, output_fn=None
-    )
-
-    # safely retrieve metric value for hydra-based hyperparameter optimization
-    metric_value = pinnstorch.utils.get_metric_value(
-        metric_dict=metric_dict, metric_names=cfg.get("optimized_metric")
-    )
-
-    # return optimized metric
-    return metric_value
-
-
-if __name__ == "__main__":
-    main()
+    # Compare with ground truth
+    rhs_vals = rhs(X.flatten(), Y.flatten()).reshape(100, 100).detach().cpu().numpy()
+    plt.imshow(rhs_vals, extent=(-3, 3, -3, 3), origin='lower', cmap='viridis')
+    plt.colorbar(label='Ground Truth')
+    plt.title('Ground Truth (RHS)')
+    plt.savefig('solution_pinn_ground_truth.png')
+    plt.show()

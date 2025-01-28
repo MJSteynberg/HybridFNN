@@ -12,7 +12,7 @@ import numpy as np
 
 
 def generate_data(rhs, N):
-    fname = 'data/diffusion/'
+    fname = 'data/diffusion/pinn'
     device = torch.device('cpu')
     L = 6.0
     num_gaussians = 1
@@ -22,7 +22,7 @@ def generate_data(rhs, N):
     solution = solver().reshape(N,N)
 
     # Choose sensor positions randomly in [1.5, 2.5]x[1.5, 2.5]
-    num_sensors = 100
+    num_sensors = 500
     sensors =  6*torch.rand((num_sensors, 2)) - 3
 
     # Interpolate the solution to the sensor positions

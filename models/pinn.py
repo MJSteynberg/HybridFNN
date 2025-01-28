@@ -7,126 +7,200 @@ import numpy as np
 # Add the models directory to the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'models')))
 from synthetic import NeuralNetwork2D
+import matplotlib.pyplot as plt
 
-class PINN(NeuralNetwork2D):
-    def __init__(self, data_dim, hidden_dim, num_layers, alpha, kappa, activation=nn.Tanh, device='cpu'):
-        super().__init__(data_dim, hidden_dim, num_layers, activation, device)
-        self.alpha = nn.Parameter(alpha)
-        self.kappa = nn.Parameter(kappa)
+import torch
+import torch.nn as nn
+import matplotlib.pyplot as plt
+
+class PINN(nn.Module):
+    """
+    Physics-Informed Neural Network (PINN) for solving PDEs.
+    Wraps a NeuralNetwork2D model and incorporates physical constraints.
+    """
+    def __init__(self, network, alpha, kappa, device='cpu'):
+        """
+        Args:
+            network (NeuralNetwork2D): The underlying neural network.
+            alpha (float or torch.Tensor): Coefficient for the Gaussian kernel in the PDE.
+            kappa (float or torch.Tensor): Coefficient for the solution term in the PDE.
+            device (str): Device to run the model ('cpu' or 'cuda').
+        """
+        super().__init__()
+        self.network = network.to(device)
+        self.alpha = torch.tensor(alpha, device=device, requires_grad=True) if not isinstance(alpha, torch.Tensor) else alpha
+        self.kappa = torch.tensor(kappa, device=device, requires_grad=True) if not isinstance(kappa, torch.Tensor) else kappa
+        self.device = device
 
     def gaussian_kernel(self, x, y, param, num_gaussians):
+        """
+        Computes a Gaussian kernel map.
+        Args:
+            x (torch.Tensor): x-coordinates.
+            y (torch.Tensor): y-coordinates.
+            param (torch.Tensor): Gaussian parameters [amplitudes, x-centers, y-centers].
+            num_gaussians (int): Number of Gaussians.
+        Returns:
+            torch.Tensor: Gaussian kernel map.
+        """
         gaussian_map = 1
         for i in range(num_gaussians):
-            gaussian_map += param[i] * torch.exp(-((x - param[num_gaussians + i]) ** 2 + (y - param[2*num_gaussians + i]) ** 2))
+            gaussian_map += param[i] * torch.exp(
+                -((x - param[num_gaussians + i]) ** 2 + (y - param[2 * num_gaussians + i]) ** 2)
+            )
         return gaussian_map
 
-        
     def forward(self, x):
+        """
+        Forward pass through the neural network.
+        Args:
+            x (torch.Tensor): Input tensor of shape (N, 2).
+        Returns:
+            torch.Tensor: Output tensor.
+        """
         return self.network(x)
-    
-    def synth_loss(self, data, rhs, loss_func):
-        # Compute the solution
-        solution = self(data[:, :2])
-        # Compute the loss
-        loss = loss_func(solution, data[:, 2]) 
-        return loss
-    
-    def phys_loss(self, data, _rhs, loss_func):
-        # Generate collocation points in the domain
-        collocation_points = 6 * torch.rand((50, 2), requires_grad=True).to(self.device) - 3
-        # Compute the synthetic solution on the collocation points
-        solution = self(collocation_points)
-        
-        # compute the laplacian of the solution
-        u_x = torch.autograd.grad(solution, collocation_points, grad_outputs=torch.ones_like(solution), create_graph=True)[0][:,0]
-        au_x = self.gaussian_kernel(collocation_points[:,0], collocation_points[:,1], self.alpha, 1) * u_x
-        au_xx = torch.autograd.grad(au_x, collocation_points, grad_outputs=torch.ones_like(u_x), create_graph=True)[0][:,0]
 
-        u_y = torch.autograd.grad(solution, collocation_points, grad_outputs=torch.ones_like(solution), create_graph=True)[0][:,1]
-        au_y = self.gaussian_kernel(collocation_points[:,0], collocation_points[:,1], self.alpha, 1) * u_y
-        au_yy = torch.autograd.grad(au_y, collocation_points, grad_outputs=torch.ones_like(u_y), create_graph=True)[0][:,1]
+    def synth_loss(self, data, loss_func):
+        """
+        Compute the synthetic data loss.
+        Args:
+            data (torch.Tensor): Synthetic data with inputs (x, y) and target values.
+            loss_func (nn.Module): Loss function (e.g., MSE).
+        Returns:
+            torch.Tensor: Loss value.
+        """
+        inputs = data[:, :2]
+        targets = data[:, 2]
+        predictions = self(inputs).reshape(-1)
+        return 0
 
-        lhs = au_xx + au_yy + self.gaussian_kernel(collocation_points[:,0], collocation_points[:,1], self.kappa, 1) * solution
-        rhs = _rhs(collocation_points[:,0], collocation_points[:,1])
+    def phys_loss(self, rhs_func, num_collocation=1000, num_boundary=500, loss_func=nn.MSELoss()):
+        """
+        Compute the physics loss using collocation and boundary points.
+        Args:
+            rhs_func (callable): Function for the right-hand side of the PDE.
+            num_collocation (int): Number of collocation points.
+            num_boundary (int): Number of boundary points.
+            loss_func (nn.Module): Loss function (e.g., MSE).
+        Returns:
+            torch.Tensor: Physics loss value.
+        """
+        # Collocation points in the domain
+        collocation_points = 6 * torch.rand((num_collocation, 2), device=self.device, requires_grad=True) - 3
 
-        # Enforce Dirichlet boundary conditions
-        # Generate collocation points on the boundary
-        x_b = torch.rand((10, 1), requires_grad=True).to(self.device) * 6 - 3
-        y_b = torch.rand((10, 1), requires_grad=True).to(self.device) * 6 - 3
-        collocation_points_b = torch.cat((torch.cat((x_b, -3 * torch.ones_like(x_b)), dim=1), torch.cat((x_b, 3 * torch.ones_like(x_b)), dim=1), torch.cat((-3 * torch.ones_like(y_b), y_b), dim=1), torch.cat((3 * torch.ones_like(y_b), y_b), dim=1)))
-        # plot points to show where they are:
-        plt.clf()
-        plt.scatter(collocation_points_b[:,0].detach().numpy(), collocation_points_b[:,1].detach().numpy())
-        plt.scatter(collocation_points[:,0].detach().numpy(), collocation_points[:,1].detach().numpy())
-        plt.savefig('points.png')
+        # Compute solution and its gradients
+        solution = self(collocation_points).reshape(-1)
 
-        loss = loss_func(lhs, rhs) + loss_func(self(collocation_points_b), torch.zeros_like(collocation_points_b[:,0].reshape(-1,1)))
-        return loss
+        u_x = torch.autograd.grad(
+            solution, collocation_points, grad_outputs=torch.ones_like(solution),
+            create_graph=True
+        )[0][:, 0]
+        au_x = self.gaussian_kernel(collocation_points[:, 0], collocation_points[:, 1], self.alpha, 1) * u_x
+        au_xx = torch.autograd.grad(
+            au_x, collocation_points, grad_outputs=torch.ones_like(au_x),
+            create_graph=True
+        )[0][:, 0]
+
+        u_y = torch.autograd.grad(
+            solution, collocation_points, grad_outputs=torch.ones_like(solution),
+            create_graph=True
+        )[0][:, 1]
+        au_y = self.gaussian_kernel(collocation_points[:, 0], collocation_points[:, 1], self.alpha, 1) * u_y
+        au_yy = torch.autograd.grad(
+            au_y, collocation_points, grad_outputs=torch.ones_like(au_y),
+            create_graph=True
+        )[0][:, 1]
+
+        # Compute the PDE residual
+        lhs = -au_xx - au_yy - self.gaussian_kernel(collocation_points[:, 0], collocation_points[:, 1], self.kappa, 1) * solution
+        rhs = rhs_func(collocation_points[:, 0], collocation_points[:, 1]).detach()
+
+        # Boundary points
+        x = torch.linspace(-3, 3, num_boundary, device=self.device).view(-1, 1)
+        y = torch.linspace(-3, 3, num_boundary, device=self.device).view(-1, 1)
+
+        left = torch.cat((-3 * torch.ones_like(y), y), dim=1)
+        right = torch.cat((3 * torch.ones_like(y), y), dim=1)
+        top = torch.cat((x, 3 * torch.ones_like(x)), dim=1)
+        bottom = torch.cat((x, -3 * torch.ones_like(x)), dim=1)
+        boundary_points = torch.cat((left, right, top, bottom), dim=0)
+
+        # Loss combining physics residual and boundary conditions
+        boundary_loss = loss_func(self(boundary_points), torch.zeros_like(boundary_points[:, :1]))
+        physics_loss = loss_func(lhs, rhs)
+        return physics_loss + boundary_loss
+
     
 
 class PINN_Trainer:
-    def __init__(self, model, optimizer, scheduler, device):
+    """
+    Trainer for Physics-Informed Neural Networks (PINNs).
+    """
+    def __init__(self, model, optimizer, scheduler, device, freq=1):
+        """
+        Args:
+            model (PINN): PINN model to train.
+            optimizer (torch.optim.Optimizer): Optimizer for training.
+            scheduler (torch.optim.lr_scheduler._LRScheduler): Learning rate scheduler.
+            device (str): Device to run the training ('cpu' or 'cuda').
+        """
         self.model = model
         self.optimizer = optimizer
         self.scheduler = scheduler
         self.device = device
         self.loss_func = nn.MSELoss()
-    
-    def train(self, data, rhs, num_epochs):
+        self.freq = freq
+
+    def train(self, data, rhs_func, num_epochs):
+        """
+        Train the PINN model.
+        Args:
+            data (torch.Tensor): Synthetic training data.
+            rhs_func (callable): Function for the right-hand side of the PDE.
+            num_epochs (int): Number of training epochs.
+        """
         for epoch in range(num_epochs):
-            loss = self._train_epoch(data, rhs)
-            if epoch % 100 == 0:
-                print(f"Epoch {epoch}: Loss = {loss:.4f}: alpha = {self.model.alpha}, kappa = {self.model.kappa}")
+            loss = self._train_epoch(data, rhs_func)
+            if epoch % self.freq == 0:
+                print(f"Epoch {epoch}: Loss = {loss:.4f}, alpha = {self.model.alpha}, kappa = {self.model.kappa}")
+
+    def _train_epoch(self, data, rhs_func):
+        """
+        Train the model for one epoch.
+        Args:
+            data (torch.Tensor): Synthetic training data.
+            rhs_func (callable): Function for the right-hand side of the PDE.
+        Returns:
+            float: Loss value for the epoch.
+        """
         
-    def _train_epoch(self, data, rhs):
-        
-        # Zero the gradients
-        loss_data = self.model.synth_loss(data, rhs, self.loss_func)
-        loss_col = self.model.phys_loss(data, rhs, self.loss_func)
 
-        
-        loss = loss_col + loss_data
-        self.optimizer.zero_grad()
-        loss.backward()
-        self.optimizer.step()
-        self.scheduler.step()
-        return loss.item()
+        def closure():
+            # Compute synthetic and physics losses
+            loss_data = self.model.synth_loss(data, self.loss_func)
+            loss_phys = self.model.phys_loss(rhs_func, loss_func=self.loss_func)
 
+            # Combine losses
+            total_loss = loss_phys + 100 * loss_data
+            self.optimizer.zero_grad()
+            total_loss.backward()
+            return total_loss
 
-def rhs(x, y):
-    # a gaussian source
-    return (4 * torch.exp(-((x - 2) ** 2 + (y - 2) ** 2)) + 4 * torch.exp(-((x + 1) ** 2 + (y + 1) ** 2)))
+        if isinstance(self.optimizer, torch.optim.LBFGS):
+            total_loss = self.optimizer.step(closure)
+        else:
+            # Optimize
+            # Compute synthetic and physics losses
+            loss_data = self.model.synth_loss(data, self.loss_func)
+            loss_phys = self.model.phys_loss(rhs_func, loss_func=self.loss_func)
 
-if __name__ == '__main__':
-    from generate_data import generate_data 
-    # Note this only works when the parameters are initialized very close to their actual position. As it is now, it faisl miserably
+            # Combine losses
+            total_loss = loss_phys + 100 * loss_data
+            self.optimizer.zero_grad()
+            total_loss.backward()
+            self.optimizer.step()
 
-    data_dim = 1
-    hidden_dim = 500
-    num_layers = 4
-    alpha_orig = [6, -1,1,  1.0]
-    k_orig = [4, 1, -1, 1.0]
-    alpha = torch.tensor(alpha_orig, requires_grad=True)
-    kappa = torch.tensor(k_orig, requires_grad=True)
-    data = torch.from_numpy(np.loadtxt('data/diffusion/pinn/data.txt')).float()
+        if self.scheduler:
+            self.scheduler.step()
 
-    
-
-    model = PINN(data_dim, hidden_dim, num_layers, alpha, kappa)
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-2)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=100, gamma=0.9)
-    device = 'cpu'
-    model.to(device)
-    trainer = PINN_Trainer(model, optimizer, scheduler, device)
-    trainer.train(data, rhs, num_epochs=1000)
-
-    # plot the solution
-    import matplotlib.pyplot as plt
-    x = torch.linspace(-3, 3, 100)
-    y = torch.linspace(-3, 3, 100)
-    X, Y = torch.meshgrid(x, y, indexing='ij')
-    xy = torch.stack((X.flatten(), Y.flatten()), dim=1)
-    Z = model(xy).reshape(100, 100)
-    plt.imshow(Z.detach().numpy(), extent=(-3, 3, -3, 3))
-    plt.savefig('solution_pinn.png')
-
+        return total_loss.item()
